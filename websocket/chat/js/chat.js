@@ -1,46 +1,74 @@
 'use strict';
-const connection = new WebSocket('wss://neto-api.herokuapp.com/chat');
 const chat = document.querySelector('.chat');
-const messagesContent = document.querySelector('.messages-content');
-const button = chat.querySelector('.message-submit');
+const chatBox = init(chat);
+const socket = new WebSocket('wss://neto-api.herokuapp.com/chat');
 
-if(connection) {
-	chat.querySelector('.chat-status').textContent = chat.querySelector('.chat-status').dataset.online;
-	chat.querySelector('.message-submit').removeAttribute('disabled');
-	let messageStatus = chat.querySelector('.message-status .message-text').cloneNode(true);
-	messagesContent.appendChild(messageStatus);
-	messageStatus.textContent = 'Пользователь появился в сети';
-}
+chatBox.content.setAttribute('style', 'overflow-y: auto;');
 
-const loading = chat.querySelector('.loading span').cloneNode(true);
-messagesContent.appendChild(loading);
+socket.addEventListener('open', () => {
+  triggerStatus('Пользователь появился в сети');
+  chatBox.status.textContent = chatBox.status.dataset.online;
+  chatBox.submit.disabled = false;
+});
 
-connection.addEventListener('message', event => {
-  if (event.data === '...') {
-  	loading.textContent = 'печатает сообщение';
+socket.addEventListener('close', () => {
+  triggerStatus('Пользователь не в сети');
+  chatBox.status.textContent = chatBox.status.dataset.offline;
+  chatBox.submit.disabled = true;
+});
+
+socket.addEventListener('message', (event) => {
+  const data = event.data;
+  const messageInput = chatBox.templates.loading;
+  const messageTemplates = chatBox.templates.messageTemplates.cloneNode(true);
+
+  if (data === '...') {
+    chatBox.content.appendChild(messageInput).scrollIntoView({block: "end", behavior: "smooth"});
   } else {
-  	let incomingMessages = chat.querySelectorAll('.message')[1].cloneNode(true);
-  	messagesContent.appendChild(incomingMessages);
-  	incomingMessages.querySelector('.message .message-text').textContent = event.data;
-  	incomingMessages.querySelector('.message .timestamp').textContent = `${(new Date).getHours()}:${(new Date).getMinutes()}`;
-
-  	if(loading.textContent !== null) {
-  		loading.textContent = '';
-  	}
+    addMessage(messageTemplates, data);
+    //chatBox.content.removeChild(messageInput);
+    chatBox.content.appendChild(messageTemplates).scrollIntoView({block: "end", behavior: "smooth"});
   }
 });
 
-button.addEventListener('click', function(event) {
-	event.preventDefault();
-	let sendMessages = chat.querySelector('.message-personal').cloneNode(true);
-	messagesContent.appendChild(sendMessages);
-	sendMessages.querySelector('.message-text').textContent = chat.querySelector('.message-input').value;
-	sendMessages.querySelector('.timestamp').textContent = `${(new Date).getHours()}:${(new Date).getMinutes()}`; 
-	connection.send(JSON.stringify(chat.querySelector('.message-input').value));
-})
+chatBox.form.addEventListener('submit', (event) => {
+  event.preventDefault();
 
-window.addEventListener('beforeunload', () => {
-	messagesContent.querySelector('.message-status .message-text').textContent = 'Пользователь не в сети';
-	chat.querySelector('.message-submit').setAttribute('disabled');
-	connection.close()
-})
+  const value = chatBox.input.value;
+  const messagePersonal = chatBox.templates.messagePersonal.cloneNode(true);
+
+  addMessage(messagePersonal,value);
+  chatBox.content.appendChild(messagePersonal).scrollIntoView({block: "end", behavior: "smooth"});
+  socket.send(value);
+  chatBox.form.reset();
+});
+
+function init(chatElem) {
+  return {
+    form: chatElem.querySelector('.message-box'),
+    input: chatElem.querySelector('.message-input'),
+    submit: chatElem.querySelector('.message-submit'),
+    content:chatElem.querySelector('.messages-content'),
+    status: chatElem.querySelector('.chat-status'),
+    templates: {
+      messageTemplates: chatElem.querySelector('[class="message"]'),
+      messagePersonal: chatElem.querySelector('.message.message-personal'),
+      loading: chatElem.querySelector('.message.loading').cloneNode(true),
+      status: chatElem.querySelector('.message.message-status')
+    }
+  };
+}
+
+function triggerStatus(messageStatus) {
+  const message = chatBox.templates.status.cloneNode(true);
+  message.querySelector('.message-text').textContent = messageStatus;
+  chatBox.content.appendChild(message);
+}
+
+function addMessage(who, data) {
+  const time = new Date();
+  const hour = time.getHours() < 10 ? `0${time.getHours()}` : time.getHours();
+  const minutes = time.getMinutes() < 10 ? `0${time.getMinutes()}` : time.getMinutes();
+  who.querySelector('.message-text').textContent = data;
+  who.querySelector('.timestamp').textContent = `${hour}:${minutes}`;
+};
